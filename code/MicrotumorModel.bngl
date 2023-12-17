@@ -1,0 +1,112 @@
+# 
+# Shift from stochastic to spatially-ordered patterns of expression for metabolic enzymes in 3D microtumors
+# Manjulata Singha, Tomoko Warita, Katsuhiko Warita, James R. Faeder, Robin E.C. Lee, Shilpa Santa and Zoltán N. Oltvai
+# 
+# 3D microtumor model
+# M1 and M2 can be switched via the rule "NUc->INHIBc" 
+begin parameters
+    NA 6.02e23 # Avogadros number
+    Rcore = 300 # Radius to outer edge of Core
+    Rinner =450 # Radius to outer edge of Inner Layer
+    Rspheroid =600 #Model Spheroids are 600 microns
+    Vcore = 4/3*3.14*(Rcore)^3 # V = 113094000 for 600u spheroid
+    Vinner = 4/3*3.14*(Rinner)^3-4/3*3.14*(Rcore)^3 # V = 268598250 for 600u spheroid
+    Vouter = 4/3*3.14*(Rspheroid)^3-4/3*3.14*(Rinner)^3 #V = 523059750
+    NUe 10^6 #Diffusible nutrient (amino acid) from liquid environment
+    diff 1 #Diffusion rate between outer-inner compartments; all rates are normalized to diffusion
+    f_diff 1/2.25 # Change in diffusion rate between outer-inner and inner-core is the ratio of the surface areas = (Rcore)^2/(Rinner)^2 = 1/2.25
+   end parameters
+   
+begin seed species
+NUo 0
+NUi 0
+NUc 0
+PHGDHo 0 #Cellular enzyme for amino acid biosynthesis (default 15)
+PHGDHi 0
+PHGDHc 0
+Ki67o 0 #Cellular marker for proliferation (default 5000)
+Ki67i 0 #(default 2500)
+Ki67c 0 #(default 1000)
+INHIBc 0 #Inhibitor of PHGDH expression in M2
+INHIBi 0
+INHIBo 0
+INHIBe 0
+end seed species
+
+begin observables
+Molecules NU_o NUo
+Molecules NU_i NUi 
+Molecules NU_c NUc
+Molecules Ki67_o Ki67o
+Molecules Ki67_i Ki67i 
+Molecules Ki67_c Ki67c
+Molecules PHGDH_o PHGDHo
+Molecules PHGDH_i PHGDHi
+Molecules PHGDH_c PHGDHc
+Molecules INHIB_c INHIBc
+Molecules INHIB_i INHIBi
+Molecules INHIB_o INHIBo
+
+end observables
+
+begin functions
+  NUp_i()= if(NU_o()>0,NU_i()/NU_o(),0)
+  NUp_c()= if(NU_o()>0,NU_c()/NU_o(),0)
+  Ki67p_i()= if(Ki67_o()>0,Ki67_i()/Ki67_o(),1)
+  Ki67p_c()= if(Ki67_o()>0,Ki67_c()/Ki67_o(),1)
+  PHGDHp_i()= if(PHGDH_o()>0,PHGDH_i()/PHGDH_o(),1)
+  PHGDHp_c()= if(PHGDH_o()>0,PHGDH_c()/PHGDH_o(),1)
+end functions
+
+begin reaction rules
+#compartments extracellular (e), outer layer (o), inner layer (i), and core (c)
+
+# Nutrient transport between (o) and (e)
+# NUe is extracellular pool; NUo is the nutrient pool within outer surface layer; model assumes extracellular nutrients are in excess and not depleted so that a steady state can be achieved
+0->NUo 0.00001*NUe  
+NUo-> 0 0.0001 
+
+#PHGDH production consumes nutrients, rate of production is reduced in the presence of Inhibitor 
+NUo->PHGDHo 0.001/(1+5*INHIB_o) 
+NUi->PHGDHi 0.001/(1+5*INHIB_i)
+NUc->PHGDHc 0.001/(1+5*INHIB_c)
+
+#Production of factors that contribute to Ki-67 positive status consume nutrients
+NUo->Ki67o 0.1 
+NUi->Ki67i 0.1
+NUc->Ki67c 0.1
+
+#Select rule for Model 1 (M1) or Model 2 (M2)
+#NUc->INHIBc 0 #M1: No Inhibitor; comment out this rule for model 2
+NUc->INHIBc 0.05 #M2: Inhibitor is expressed; comment out this rule for model 1
+
+# Transport of inhibitor 
+INHIBc<->INHIBi 0.001,0.001
+INHIBi<->INHIBo 0.001,0.001 
+INHIBo<->INHIBe 0.001,0.001 
+
+#Transport of nutrients within the microtumor
+NUo<->NUi diff,diff #default value of 0.5,0.5
+NUi<->NUc f_diff*diff,f_diff*diff #Modified diffusion relates to flux through compartment surfaces
+
+#de novo serine biosynthesis
+PHGDHo->NUo+PHGDHo 1  
+PHGDHi->NUi+PHGDHi 1
+PHGDHc->NUc+PHGDHc 1
+
+#decay of species
+Ki67o->0 0.01  
+Ki67i->0 0.01
+Ki67c->0 0.01
+PHGDHo->0 0.05
+PHGDHi->0 0.05
+PHGDHc->0 0.05
+INHIBc->0 0.005
+INHIBi->0 0.005
+INHIBo->0 0.005
+end reaction rules
+
+generate_network({overwrite=>1});
+simulate_ode({t_end=>6e5, n_steps=>10,print_functions=>1});
+#EOF
+
